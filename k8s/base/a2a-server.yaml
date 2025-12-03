@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: a2a-server
+  namespace: mcp-a2a
+  labels:
+    app: a2a-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: a2a-server
+  template:
+    metadata:
+      labels:
+        app: a2a-server
+    spec:
+      containers:
+      - name: a2a-server
+        image: a2a-server:latest  # Replace with your registry
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8081
+          name: http
+        envFrom:
+        - configMapRef:
+            name: a2a-server-config
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: a2a-server-service
+  namespace: mcp-a2a
+  labels:
+    app: a2a-server
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: http
+  selector:
+    app: a2a-server
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: a2a-server-hpa
+  namespace: mcp-a2a
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: a2a-server
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80

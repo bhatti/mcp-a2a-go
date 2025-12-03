@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'mcp-a2a-local'
+    environment: 'development'
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Rule files
+rule_files:
+  # - "alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # MCP Server metrics
+  - job_name: 'mcp-server'
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+        labels:
+          service: 'mcp-server'
+          component: 'backend'
+
+  # A2A Server metrics
+  - job_name: 'a2a-server'
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          service: 'a2a-server'
+          component: 'backend'
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'
+
+  # PostgreSQL exporter (if we add it later)
+  - job_name: 'postgres'
+    static_configs:
+      - targets: []  # Add postgres-exporter:9187 if deployed
+        labels:
+          service: 'postgres'
+          component: 'database'
+
+  # Redis exporter (if we add it later)
+  - job_name: 'redis'
+    static_configs:
+      - targets: []  # Add redis-exporter:9121 if deployed
+        labels:
+          service: 'redis'
+          component: 'cache'

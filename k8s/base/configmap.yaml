@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-server-config
+  namespace: mcp-a2a
+data:
+  DB_HOST: postgres-service
+  DB_PORT: "5432"
+  DB_NAME: mcp_db
+  DB_SSLMODE: require
+  REDIS_ADDR: redis-service:6379
+  JAEGER_URL: http://jaeger-service:14268/api/traces
+  RATE_LIMIT: "100"
+  PORT: "8080"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: a2a-server-config
+  namespace: mcp-a2a
+data:
+  PORT: "8081"
+  REDIS_ADDR: redis-service:6379
+  BUDGET_BASIC: "10.0"
+  BUDGET_PRO: "50.0"
+  BUDGET_ENTERPRISE: "200.0"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: mcp-a2a
+data:
+  init-db.sql: |
+    -- Create pgvector extension
+    CREATE EXTENSION IF NOT EXISTS vector;
+
+    -- Create documents table
+    CREATE TABLE IF NOT EXISTS documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id UUID NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        embedding vector(1536),
+        metadata JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Create indexes
+    CREATE INDEX IF NOT EXISTS idx_documents_tenant ON documents(tenant_id);
+    CREATE INDEX IF NOT EXISTS idx_documents_embedding ON documents USING ivfflat (embedding vector_cosine_ops);
+    CREATE INDEX IF NOT EXISTS idx_documents_content_fts ON documents USING GIN (to_tsvector('english', content));
+
+    -- Enable Row-Level Security
+    ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+    -- RLS Policy: Users can only see their tenant's documents
+    CREATE POLICY IF NOT EXISTS tenant_isolation ON documents
+        FOR ALL
+        USING (tenant_id = current_setting('app.current_tenant', TRUE)::uuid);
+
+    -- Grant permissions
+    GRANT ALL PRIVILEGES ON TABLE documents TO mcp_user;

@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: mcp-a2a
+
+resources:
+- namespace.yaml
+- configmap.yaml
+- secret.yaml
+- pvc.yaml
+- postgres.yaml
+- redis.yaml
+- mcp-server.yaml
+- a2a-server.yaml
+- ingress.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: mcp-a2a
