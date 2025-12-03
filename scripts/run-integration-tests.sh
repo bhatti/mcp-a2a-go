@@ -1,11 +1,11 @@
-#!/bin/bash
+#!/bin/bash -x
 set -e
 
 echo "🧪 Running MCP Server Integration Tests"
 echo "========================================"
 
 # Check if Docker containers are running
-if ! docker compose ps | grep -q "postgres.*running"; then
+if ! docker compose ps | grep -q "postgres"; then
     echo "❌ PostgreSQL container is not running!"
     echo "   Start services with: docker compose up -d"
     exit 1
