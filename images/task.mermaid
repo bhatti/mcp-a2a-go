@@ -1,0 +1,23 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#2E3440', 'primaryTextColor':'#D8DEE9', 'primaryBorderColor':'#4C566A', 'lineColor':'#88C0D0', 'secondaryColor':'#3B4252', 'tertiaryColor':'#434C5E', 'background':'#2E3440', 'mainBkg':'#2E3440', 'secondBkg':'#3B4252', 'textColor':'#ECEFF4'}}}%%
+stateDiagram-v2
+    [*] --> Pending: POST /tasks
+    Pending --> Running: Workflow Starts
+    Running --> Running: Progress Updates (SSE)
+    Running --> Completed: Success
+    Running --> Failed: Error
+    Completed --> [*]
+    Failed --> [*]
+
+    note right of Pending
+        Task created with ID
+        Workflow parameters stored
+        Budget checked
+    end note
+
+    note right of Running
+        Real-time SSE events:
+        - status updates
+        - intermediate results
+        - progress indicators
+        - cost tracking
+    end note
