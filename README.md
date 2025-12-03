@@ -619,41 +619,6 @@ redis-cli ping
 - **OpenTelemetry Go**: https://opentelemetry.io/docs/languages/go/
 - **pgvector**: https://github.com/pgvector/pgvector
 
-## 🤝 Contributing
-
-This is a tutorial project demonstrating production patterns. Contributions welcome!
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests (maintain 90%+ coverage)
-4. Ensure all tests pass
-5. Submit a pull request
-
 ## 📝 License
 
 MIT License - see LICENSE file for details
-
-## ✍️ Blog Series
-
-This code accompanies a detailed blog series on production-grade agentic AI:
-
-- **Part 1**: Multi-Tenant RAG with MCP - Authentication, authorization, and hybrid search
-- **Part 2**: Cost-Controlled AI with A2A - Budget enforcement and real-time streaming
-- **Part 3**: Observability Patterns - Tracing, metrics, and debugging distributed systems
-- **Part 4**: Production Deployment - Kubernetes, security hardening, and scaling
-
-## 🙏 Acknowledgments
-
-Built with:
-- [Go](https://golang.org/) - Backend services
-- [PostgreSQL](https://www.postgresql.org/) + [pgvector](https://github.com/pgvector/pgvector) - Vector database
-- [Redis](https://redis.io/) - Rate limiting and caching
-- [OpenTelemetry](https://opentelemetry.io/) - Observability
-- [Jaeger](https://www.jaegertracing.io/) - Distributed tracing
-- [Prometheus](https://prometheus.io/) - Metrics
-- [Streamlit](https://streamlit.io/) - Interactive UI
-- [Docker](https://www.docker.com/) - Containerization
-
----
-
-**Built with ❤️ for the agentic AI community. Happy learning!**
