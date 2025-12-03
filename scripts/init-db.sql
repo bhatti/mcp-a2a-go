@@ -156,6 +156,10 @@ CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents
 CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- Ensure mcp_user does not bypass RLS (important for tenant isolation)
+ALTER USER mcp_user NOSUPERUSER;
+ALTER USER mcp_user NOBYPASSRLS;
+
 -- Grant permissions
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mcp_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mcp_user;
