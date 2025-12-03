@@ -127,7 +127,7 @@ This repository showcases two production-ready use cases:
 │
 ├── docker compose.yml             # Complete local stack
 ├── README.md                      # This file
-├── DESIGN.md                      # Detailed architecture (coming next)
+├── DESIGN.md                      # Detailed architecture 
 └── go.work                        # Go workspace
 ```
 
@@ -614,7 +614,7 @@ redis-cli ping
 
 ## 📖 Further Reading
 
-- **DESIGN.md**: Detailed architecture and implementation guide (coming next)
+- **[Design Document](DESIGN.md)**: Detailed architecture and implementation guide
 - **MCP Specification**: https://spec.modelcontextprotocol.io/
 - **OpenTelemetry Go**: https://opentelemetry.io/docs/languages/go/
 - **pgvector**: https://github.com/pgvector/pgvector
