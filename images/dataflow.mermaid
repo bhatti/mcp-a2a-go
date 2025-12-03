@@ -1,0 +1,74 @@
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#E8F4F8',
+  'primaryTextColor':'#000000',
+  'primaryBorderColor':'#0066CC',
+  'lineColor':'#FF6600',
+  'secondaryColor':'#E8F5E8',
+  'tertiaryColor':'#F0E8F5',
+  'clusterBkg':'#F8F9FA',
+  'clusterBorder':'#495057',
+  'fontSize':'13px'
+}}}%%
+
+flowchart LR
+    subgraph Client["🖥️ Client Layer"]
+        UI[Streamlit UI<br/>Port 8501]
+    end
+    
+    subgraph Auth["🔐 Authentication"]
+        JWT[JWT Token<br/>RSA-256<br/>tenant_id + user_id]
+    end
+    
+    subgraph MCP["🔧 MCP Server - Port 8080"]
+        MCPHandler[JSON-RPC Handler]
+        Tools[Tool Registry<br/>• hybrid_search<br/>• retrieve_document<br/>• list_documents]
+    end
+    
+    subgraph A2A["🤖 A2A Server - Port 8082"]
+        TaskMgr[Task Manager]
+        SSE[SSE Stream]
+    end
+    
+    subgraph Workflows["⚙️ LangGraph Workflows"]
+        RAG[RAG Pipeline]
+        Research[Research Pipeline]
+    end
+    
+    subgraph Data["💾 Data Layer"]
+        PG[(PostgreSQL<br/>+ pgvector<br/>+ RLS)]
+        Cache[(Redis<br/>Cache)]
+        Ollama[Ollama LLM<br/>llama3.2]
+    end
+    
+    UI -->|1. Login| JWT
+    UI -->|2. Bearer Token| MCPHandler
+    MCPHandler -->|3. Validate| JWT
+    MCPHandler -->|4. Route| Tools
+    Tools -->|5. SET tenant| PG
+    Tools -->|6. Query| PG
+    Tools -->|7. Cache| Cache
+    
+    UI -->|8. Create Task| TaskMgr
+    TaskMgr -->|9. Execute| RAG
+    TaskMgr -->|9. Execute| Research
+    RAG -->|10. Call Tools| Tools
+    Research -->|10. Call Tools| Tools
+    RAG -->|11. Generate| Ollama
+    Research -->|11. Generate| Ollama
+    TaskMgr -.->|12. Progress| SSE
+    SSE -.->|13. Events| UI
+    
+    %% Styling with professional, soft colors
+    classDef clientColor fill:#E8F4F8,stroke:#0066CC,stroke-width:3px,color:#000000
+    classDef authColor fill:#FFE6E6,stroke:#CC0000,stroke-width:3px,color:#000000
+    classDef mcpColor fill:#FFE8D6,stroke:#FF6600,stroke-width:3px,color:#000000
+    classDef a2aColor fill:#FFF4E6,stroke:#FF9933,stroke-width:3px,color:#000000
+    classDef workflowColor fill:#E8F5E8,stroke:#228B22,stroke-width:3px,color:#000000
+    classDef dataColor fill:#F0E8F5,stroke:#9933CC,stroke-width:3px,color:#000000
+    
+    class UI clientColor
+    class JWT authColor
+    class MCPHandler,Tools mcpColor
+    class TaskMgr,SSE a2aColor
+    class RAG,Research workflowColor
+    class PG,Cache,Ollama dataColor

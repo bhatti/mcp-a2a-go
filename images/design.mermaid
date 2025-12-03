@@ -1,0 +1,109 @@
+%%{init: {'theme':'base', 'themeVariables': { 
+  'primaryColor':'#E8F4F8',
+  'primaryTextColor':'#000000',
+  'primaryBorderColor':'#0066CC',
+  'lineColor':'#0066CC',
+  'secondaryColor':'#FFE8D6',
+  'tertiaryColor':'#E8F5E8',
+  'background':'#FFFFFF',
+  'mainBkg':'#E8F4F8',
+  'secondBkg':'#FFE8D6',
+  'tertiaryBkg':'#F0E8F5',
+  'textColor':'#000000',
+  'fontSize':'14px',
+  'fontFamily':'arial'
+}}}%%
+
+graph TB
+    subgraph Client["Client Layer"]
+        UI[Streamlit UI<br/>Port 8501<br/>Authentication, Search,<br/>Cost Tracking]
+        CLI[CLI Tools<br/>Python Scripts]
+    end
+
+    subgraph Protocols["Protocol Layer (Go)"]
+        MCP[MCP Server<br/>Port 8080<br/>JSON-RPC 2.0<br/>5000+ req/sec]
+        A2A[A2A Server<br/>Port 8082<br/>REST + SSE<br/>Task Orchestration]
+    end
+
+    subgraph Orchestration["Workflow Orchestration (Python)"]
+        LG[LangGraph<br/>State Graphs<br/>Multi-Step Workflows]
+        WF1[RAG Workflow]
+        WF2[Research Workflow]
+        WF3[Hybrid Search Workflow]
+    end
+
+    subgraph DataAI["Data & AI Layer"]
+        PG[(PostgreSQL 16<br/>+ pgvector<br/>Port 5432<br/>RLS Enabled)]
+        OL[Ollama<br/>Port 11434<br/>Local LLM<br/>llama3.2]
+        REDIS[(Redis Cache<br/>Query Results<br/>30s TTL)]
+    end
+
+    subgraph Security["Security Layer"]
+        JWT[JWT Validator<br/>RSA-256<br/>Public Key]
+        RLS[Row-Level Security<br/>Tenant Isolation]
+    end
+
+    %% Authentication Flow
+    UI -->|1. Generate JWT<br/>RS-256 Private Key| JWT
+    JWT -->|2. Bearer Token| MCP
+    
+    %% MCP Protocol Flow
+    UI -->|3. JSON-RPC Request<br/>tools/call| MCP
+    CLI -->|JSON-RPC Request| MCP
+    MCP -->|4. Validate Token| JWT
+    MCP -->|5. Extract tenant_id| RLS
+    
+    %% Database Operations
+    MCP -->|6. SET tenant context| PG
+    MCP -->|7. Query with RLS| PG
+    MCP -->|8. Check cache| REDIS
+    
+    %% A2A Task Flow
+    UI -->|9. POST /tasks<br/>Create Task| A2A
+    A2A -->|10. Store Task State| PG
+    A2A -->|11. Invoke Workflow| LG
+    
+    %% Workflow Orchestration
+    LG -->|12. Select Workflow| WF1
+    LG -->|Select Workflow| WF2
+    LG -->|Select Workflow| WF3
+    
+    %% MCP Tool Calls from Workflows
+    WF1 -->|13. MCP Client<br/>hybrid_search| MCP
+    WF2 -->|MCP Client<br/>retrieve_document| MCP
+    WF3 -->|MCP Client<br/>list_documents| MCP
+    
+    %% LLM Inference
+    WF1 -->|14. Generate<br/>Embeddings| OL
+    WF2 -->|LLM Generate<br/>Completions| OL
+    WF3 -->|Embeddings| OL
+    
+    %% SSE Streaming
+    A2A -.->|15. SSE Stream<br/>Real-time Events| UI
+    WF1 -.->|Progress Updates| A2A
+    WF2 -.->|Progress Updates| A2A
+    
+    %% Cache Updates
+    MCP -->|16. Cache Results| REDIS
+    
+    %% Styling with professional colors
+    classDef clientStyle fill:#E8F4F8,stroke:#0066CC,stroke-width:3px,color:#000000
+    classDef protocolStyle fill:#FFE8D6,stroke:#FF6600,stroke-width:3px,color:#000000
+    classDef orchestrationStyle fill:#E8F5E8,stroke:#228B22,stroke-width:3px,color:#000000
+    classDef dataStyle fill:#F0E8F5,stroke:#9933CC,stroke-width:3px,color:#000000
+    classDef securityStyle fill:#FFE6E6,stroke:#CC0000,stroke-width:3px,color:#000000
+    classDef workflowStyle fill:#F0F8F0,stroke:#228B22,stroke-width:2px,color:#000000
+    
+    class UI,CLI clientStyle
+    class MCP,A2A protocolStyle
+    class LG orchestrationStyle
+    class WF1,WF2,WF3 workflowStyle
+    class PG,OL,REDIS dataStyle
+    class JWT,RLS securityStyle
+    
+    %% Link styling for better visibility
+    linkStyle 0,1,2,3,4 stroke:#CC0000,stroke-width:2px
+    linkStyle 5,6,7 stroke:#9933CC,stroke-width:2px
+    linkStyle 8,9,10 stroke:#FF6600,stroke-width:2px
+    linkStyle 11,12,13,14,15,16 stroke:#228B22,stroke-width:2px
+    linkStyle 17,18,19 stroke:#0066CC,stroke-width:2px,stroke-dasharray:5
