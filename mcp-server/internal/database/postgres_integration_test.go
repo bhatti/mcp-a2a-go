@@ -22,7 +22,7 @@ func getTestDBConfig() Config {
 		Host:     getEnvOrDefault("DB_HOST", "localhost"),
 		Port:     5432,
 		User:     getEnvOrDefault("DB_USER", "mcp_user"),
-		Password: getEnvOrDefault("DB_PASSWORD", "mcp_secure_pass"),
+		Password: getEnvOrDefault("DB_PASSWORD", "mcp_password"),
 		DBName:   getEnvOrDefault("DB_NAME", "mcp_db"),
 		SSLMode:  getEnvOrDefault("DB_SSLMODE", "disable"),
 		MaxConns: 10,

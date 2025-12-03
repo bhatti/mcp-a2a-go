@@ -22,7 +22,7 @@ echo "✅ PostgreSQL is ready"
 export DB_HOST=localhost
 export DB_PORT=5432
 export DB_USER=mcp_user
-export DB_PASSWORD=mcp_secure_pass
+export DB_PASSWORD=mcp_password
 export DB_NAME=mcp_db
 export DB_SSLMODE=disable
 
