@@ -105,7 +105,7 @@ services:
       PORT: "8080"
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: mcp_user
+      DB_USER: app_user
       DB_PASSWORD: mcp_password
       DB_NAME: mcp_db
       DB_SSLMODE: disable
