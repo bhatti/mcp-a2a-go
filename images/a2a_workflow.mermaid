@@ -1,0 +1,30 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#2E3440', 'primaryTextColor':'#D8DEE9', 'primaryBorderColor':'#4C566A', 'lineColor':'#88C0D0', 'secondaryColor':'#3B4252', 'tertiaryColor':'#434C5E', 'background':'#2E3440', 'mainBkg':'#2E3440', 'secondBkg':'#3B4252', 'tertiaryBkg':'#434C5E', 'textColor':'#ECEFF4', 'fontSize':'16px'}}}%%
+graph TB
+    subgraph "A2A Orchestration Layer"
+        A[Client Submits Task] -->|HTTP POST| B[A2A Server Creates Task]
+        B --> C[Task ID: abc-123]
+        C --> D[LangGraph Workflow]
+    end
+
+    subgraph "Multi-Step Workflow"
+        D --> E[Step 1: Search Documents]
+        E -->|MCP Call| F[MCP Server]
+        F --> G[Step 2: Rank Results]
+        G --> H[Step 3: Generate Answer]
+        H --> I[Step 4: Verify Sources]
+    end
+
+    subgraph "Real-Time Updates"
+        E -.->|SSE| J[Client]
+        G -.->|SSE| J
+        H -.->|SSE| J
+        I -.->|SSE| J
+    end
+
+    I --> K[Final Result]
+    K -->|Artifact| J
+
+    style A fill:#5E81AC,stroke:#81A1C1,color:#ECEFF4
+    style B fill:#5E81AC,stroke:#81A1C1,color:#ECEFF4
+    style F fill:#BF616A,stroke:#D08770,color:#ECEFF4
+    style K fill:#A3BE8C,stroke:#B48EAD,color:#2E3440
