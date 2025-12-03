@@ -1,0 +1,79 @@
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#E8F4F8',
+  'primaryTextColor':'#000000',
+  'primaryBorderColor':'#0066CC',
+  'lineColor':'#0066CC',
+  'secondaryColor':'#FFE8D6',
+  'tertiaryColor':'#E8F5E8',
+  'clusterBkg':'#F8F9FA',
+  'clusterBorder':'#495057',
+  'fontSize':'14px'
+}}}%%
+
+graph TB
+    Start([START: Research Topic]) --> Plan[📋 plan_research<br/>Get agent capabilities<br/>Create task list]
+    
+    Plan --> CheckTasks{Tasks<br/>Created?}
+    
+    CheckTasks -->|Yes| Execute[⚙️ execute_tasks<br/>For each capability:<br/>create + poll task]
+    CheckTasks -->|No| ErrorState
+    
+    Execute --> Budget{Budget<br/>OK?}
+    
+    Budget -->|Yes| Poll[Poll Task Status<br/>Max 30 attempts<br/>1 sec intervals]
+    Budget -->|No| BudgetError[Budget Exceeded<br/>Stop execution]
+    
+    Poll --> Status{Task<br/>State?}
+    
+    Status -->|Completed| AddResult[Add result<br/>+ cost]
+    Status -->|Failed| AddError[Add error]
+    Status -->|Running| Wait[Wait 1 sec]
+    
+    Wait --> Poll
+    AddResult --> MoreTasks{More<br/>Tasks?}
+    AddError --> MoreTasks
+    
+    MoreTasks -->|Yes| Execute
+    MoreTasks -->|No| Synthesize[🔬 synthesize_results<br/>LLM combines findings<br/>Generate summary]
+    
+    Synthesize --> Return([Return Summary<br/>+ Cost + Results])
+    
+    BudgetError --> ErrorReturn([Return Error])
+    
+    Plan --> LF1[Langfuse:<br/>num_tasks,<br/>budget_tier]
+    Execute --> LF2[Langfuse:<br/>num_results,<br/>total_cost]
+    Synthesize --> LF3[Langfuse:<br/>input/output,<br/>model usage]
+    
+    Plan -->|GET /agent| A2A1[A2A Server<br/>Get capabilities]
+    Execute -->|POST /tasks| A2A2[A2A Server<br/>Create task]
+    Poll -->|GET /tasks/id| A2A3[A2A Server<br/>Check status]
+    
+    A2A2 --> BudgetMgr[Budget Manager<br/>Per-user limits]
+    A2A2 --> TaskDB[(Task Store<br/>PostgreSQL)]
+    
+    Synthesize -->|Generate| LLM[OpenAI GPT-3.5<br/>Synthesis prompt]
+    
+    Poll --> SSE[SSE Alternative:<br/>/tasks/id/events]
+    
+    Plan -->|Error| ErrorState[Set error state]
+    Execute -->|Error| ErrorState
+    Synthesize -->|Error| ErrorState
+    ErrorState --> ErrorReturn
+    
+    classDef workflowStep fill:#E8F4F8,stroke:#0066CC,stroke-width:3px,color:#000000
+    classDef a2aStep fill:#FFE8D6,stroke:#FF6600,stroke-width:3px,color:#000000
+    classDef llmStep fill:#E8F5E8,stroke:#228B22,stroke-width:3px,color:#000000
+    classDef dataStep fill:#F0E8F5,stroke:#9933CC,stroke-width:3px,color:#000000
+    classDef obsStep fill:#FFF4E6,stroke:#FFB800,stroke-width:2px,color:#000000
+    classDef errorStep fill:#FFE6E6,stroke:#CC0000,stroke-width:2px,color:#000000
+    classDef decisionStep fill:#FFF9E6,stroke:#FF9933,stroke-width:2px,color:#000000
+    classDef budgetStep fill:#E6F7FF,stroke:#0099CC,stroke-width:3px,color:#000000
+    
+    class Start,Plan,Execute,Poll,Wait,AddResult,AddError,Synthesize,Return workflowStep
+    class A2A1,A2A2,A2A3,SSE a2aStep
+    class LLM llmStep
+    class TaskDB dataStep
+    class LF1,LF2,LF3 obsStep
+    class ErrorState,BudgetError,ErrorReturn errorStep
+    class CheckTasks,Budget,Status,MoreTasks decisionStep
+    class BudgetMgr budgetStep

@@ -1,0 +1,68 @@
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#E8F4F8',
+  'primaryTextColor':'#000000',
+  'primaryBorderColor':'#0066CC',
+  'lineColor':'#0066CC',
+  'secondaryColor':'#FFE8D6',
+  'tertiaryColor':'#E8F5E8',
+  'clusterBkg':'#F8F9FA',
+  'clusterBorder':'#495057',
+  'fontSize':'14px'
+}}}%%
+
+graph TB
+    Start([START: Hybrid Query]) --> Auth[Generate JWT Token<br/>Multi-tenant auth]
+    
+    Auth --> Internal[🔍 search_internal<br/>MCP hybrid_search<br/>Internal docs: limit=3]
+    
+    Internal --> External[🌐 research_external<br/>A2A create_task<br/>External sources: limit=3]
+    
+    External --> Combine[🔄 combine_sources<br/>Format internal docs<br/>+ external research]
+    
+    Combine --> Generate[🤖 generate_answer<br/>LLM synthesis<br/>Both sources + citations]
+    
+    Generate --> Return([Return Answer<br/>+ Sources + Cost])
+    
+    Internal -->|JSON-RPC| MCP[MCP Server<br/>hybrid_search tool]
+    MCP -->|Query| MCPDB[(PostgreSQL<br/>Internal KB)]
+    
+    External -->|POST /tasks| A2A[A2A Server<br/>search_papers]
+    A2A --> TaskPoll[Poll task status<br/>30 sec timeout]
+    TaskPoll --> SSE[SSE Alternative:<br/>Real-time events]
+    
+    Generate -->|API Call| LLM[GPT-4<br/>Comprehensive answer]
+    
+    Internal --> LF1[Langfuse:<br/>source=internal,<br/>num_docs]
+    External --> LF2[Langfuse:<br/>source=external,<br/>task_id, cost]
+    Generate --> LF3[Langfuse:<br/>input/output,<br/>total_cost]
+    
+    Internal -->|Error| ErrInternal[Set internal error]
+    External -->|Error| ErrExternal[Set external error]
+    Generate -->|Error| ErrGenerate[Set generation error]
+    
+    ErrInternal --> External
+    ErrExternal --> Combine
+    ErrGenerate --> Return
+    
+    Combine --> IntDocs[Internal Docs<br/>Title + Content<br/>+ Relevance]
+    Combine --> ExtRes[External Research<br/>Papers + Data<br/>+ Cost]
+    IntDocs --> Context[Combined Context]
+    ExtRes --> Context
+    Context --> Generate
+    
+    classDef workflowStep fill:#E8F4F8,stroke:#0066CC,stroke-width:3px,color:#000000
+    classDef mcpStep fill:#FFE8D6,stroke:#FF6600,stroke-width:3px,color:#000000
+    classDef a2aStep fill:#FFF4E6,stroke:#FF9933,stroke-width:3px,color:#000000
+    classDef llmStep fill:#E8F5E8,stroke:#228B22,stroke-width:3px,color:#000000
+    classDef dataStep fill:#F0E8F5,stroke:#9933CC,stroke-width:3px,color:#000000
+    classDef obsStep fill:#FFF9E6,stroke:#FFB800,stroke-width:2px,color:#000000
+    classDef errorStep fill:#FFE6E6,stroke:#CC0000,stroke-width:2px,color:#000000
+    classDef combineStep fill:#E6F7FF,stroke:#0099CC,stroke-width:2px,color:#000000
+    
+    class Start,Auth,Internal,External,Combine,Generate,Return workflowStep
+    class MCP,MCPDB mcpStep
+    class A2A,TaskPoll,SSE a2aStep
+    class LLM llmStep
+    class LF1,LF2,LF3 obsStep
+    class ErrInternal,ErrExternal,ErrGenerate errorStep
+    class IntDocs,ExtRes,Context combineStep

@@ -1,0 +1,55 @@
+%%{init: {'theme':'base', 'themeVariables': {
+  'primaryColor':'#E8F4F8',
+  'primaryTextColor':'#000000',
+  'primaryBorderColor':'#0066CC',
+  'lineColor':'#0066CC',
+  'secondaryColor':'#FFE8D6',
+  'tertiaryColor':'#E8F5E8',
+  'clusterBkg':'#F8F9FA',
+  'clusterBorder':'#495057',
+  'fontSize':'14px'
+}}}%%
+
+graph TB
+    Start([START: User Query]) --> Auth[Generate JWT Token<br/>tenant_id + user_id]
+    
+    Auth --> Search[🔍 search_documents<br/>MCP hybrid_search<br/>limit=5, weights=0.5/0.5]
+    
+    Search --> CheckDocs{Documents<br/>Found?}
+    
+    CheckDocs -->|Yes| Format[📝 format_context<br/>Combine documents<br/>with relevance scores]
+    CheckDocs -->|No| Format
+    
+    Format --> Generate[🤖 generate_answer<br/>LLM: gpt-4/llama3<br/>System + User prompt]
+    
+    Generate --> Return([Return Answer])
+    
+    Search --> LF1[Langfuse:<br/>num_documents,<br/>search_type]
+    Generate --> LF2[Langfuse:<br/>input/output,<br/>token usage]
+    
+    Search -->|JSON-RPC| MCP[MCP Server<br/>Port 8080]
+    MCP -->|Query + RLS| DB[(PostgreSQL<br/>pgvector)]
+    
+    Generate --> LLM{OpenAI or<br/>Ollama?}
+    LLM -->|OpenAI| GPT[GPT-4<br/>ChatOpenAI]
+    LLM -->|Ollama| LOCAL[llama3<br/>ChatOllama]
+    
+    Search -->|Error| ErrorState[Set error state]
+    Generate -->|Error| ErrorState
+    ErrorState --> Return
+    
+    classDef workflowStep fill:#E8F4F8,stroke:#0066CC,stroke-width:3px,color:#000000
+    classDef mcpStep fill:#FFE8D6,stroke:#FF6600,stroke-width:3px,color:#000000
+    classDef llmStep fill:#E8F5E8,stroke:#228B22,stroke-width:3px,color:#000000
+    classDef dataStep fill:#F0E8F5,stroke:#9933CC,stroke-width:3px,color:#000000
+    classDef obsStep fill:#FFF4E6,stroke:#FFB800,stroke-width:2px,color:#000000
+    classDef errorStep fill:#FFE6E6,stroke:#CC0000,stroke-width:2px,color:#000000
+    classDef decisionStep fill:#FFF9E6,stroke:#FF9933,stroke-width:2px,color:#000000
+    
+    class Start,Auth,Search,Format,Generate,Return workflowStep
+    class MCP mcpStep
+    class LLM,GPT,LOCAL llmStep
+    class DB dataStep
+    class LF1,LF2 obsStep
+    class ErrorState errorStep
+    class CheckDocs decisionStep
