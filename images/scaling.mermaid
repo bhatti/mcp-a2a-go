@@ -1,0 +1,51 @@
+%%{init: {'theme':'base', 'themeVariables': { 'primaryColor':'#2E3440', 'primaryTextColor':'#D8DEE9', 'primaryBorderColor':'#4C566A', 'lineColor':'#88C0D0', 'secondaryColor':'#3B4252', 'tertiaryColor':'#434C5E', 'background':'#2E3440', 'mainBkg':'#2E3440', 'secondBkg':'#3B4252', 'textColor':'#ECEFF4'}}}%%
+graph TB
+    subgraph "Load Balancer"
+        LB[NGINX/HAProxy]
+    end
+
+    subgraph "MCP Servers (Stateless)"
+        MCP1[MCP Server 1]
+        MCP2[MCP Server 2]
+        MCP3[MCP Server N]
+    end
+
+    subgraph "A2A Servers (Stateless)"
+        A2A1[A2A Server 1]
+        A2A2[A2A Server 2]
+    end
+
+    subgraph "Database Layer"
+        PG1[(PostgreSQL Primary)]
+        PG2[(Read Replica 1)]
+        PG3[(Read Replica 2)]
+    end
+
+    subgraph "Cache Layer"
+        REDIS[Redis Cache<br/>Query Results]
+    end
+
+    LB -->|Round Robin| MCP1
+    LB -->|Round Robin| MCP2
+    LB -->|Round Robin| MCP3
+
+    LB -->|Round Robin| A2A1
+    LB -->|Round Robin| A2A2
+
+    MCP1 --> REDIS
+    MCP2 --> REDIS
+    MCP3 --> REDIS
+
+    MCP1 -->|Write| PG1
+    MCP1 -->|Read| PG2
+    MCP2 -->|Read| PG3
+
+    PG1 -->|Replication| PG2
+    PG1 -->|Replication| PG3
+
+    style LB fill:#5E81AC,stroke:#81A1C1,color:#ECEFF4
+    style MCP1 fill:#BF616A,stroke:#D08770,color:#ECEFF4
+    style MCP2 fill:#BF616A,stroke:#D08770,color:#ECEFF4
+    style MCP3 fill:#BF616A,stroke:#D08770,color:#ECEFF4
+    style REDIS fill:#D08770,stroke:#EBCB8B,color:#2E3440
+    style PG1 fill:#B48EAD,stroke:#8FBCBB,color:#ECEFF4
