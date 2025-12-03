@@ -21,7 +21,7 @@ func getTestDBConfig() Config {
 	return Config{
 		Host:     getEnvOrDefault("DB_HOST", "localhost"),
 		Port:     5432,
-		User:     getEnvOrDefault("DB_USER", "mcp_user"),
+		User:     getEnvOrDefault("DB_USER", "app_user"), // Use app_user for RLS enforcement
 		Password: getEnvOrDefault("DB_PASSWORD", "mcp_password"),
 		DBName:   getEnvOrDefault("DB_NAME", "mcp_db"),
 		SSLMode:  getEnvOrDefault("DB_SSLMODE", "disable"),

@@ -156,10 +156,27 @@ CREATE TRIGGER update_documents_updated_at BEFORE UPDATE ON documents
 CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Ensure mcp_user does not bypass RLS (important for tenant isolation)
-ALTER USER mcp_user NOSUPERUSER;
-ALTER USER mcp_user NOBYPASSRLS;
+-- Create application user with proper RLS enforcement
+-- Note: mcp_user is created by Docker with POSTGRES_USER and has superuser privileges
+-- We create a separate app_user for the application to use, which enforces RLS
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'app_user') THEN
+        CREATE ROLE app_user WITH LOGIN PASSWORD 'mcp_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+    END IF;
+END
+$$;
 
--- Grant permissions
+-- Grant permissions to app_user
+GRANT CONNECT ON DATABASE mcp_db TO app_user;
+GRANT USAGE ON SCHEMA public TO app_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_user;
+
+-- Also grant to mcp_user for backward compatibility
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO mcp_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO mcp_user;
+
+-- Set default privileges for future tables
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO app_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO app_user;
