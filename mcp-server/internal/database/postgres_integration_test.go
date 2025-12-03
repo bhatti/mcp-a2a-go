@@ -370,6 +370,23 @@ func TestTenantIsolation(t *testing.T) {
 
 	ctx := context.Background()
 
+	// First, verify RLS is enabled and user cannot bypass it
+	tx, err := db.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+
+	var rlsEnabled bool
+	err = tx.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE relname = 'documents'").Scan(&rlsEnabled)
+	require.NoError(t, err, "Failed to check RLS status")
+	require.True(t, rlsEnabled, "RLS must be enabled on documents table")
+
+	var bypassRLS bool
+	err = tx.QueryRow(ctx, "SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user").Scan(&bypassRLS)
+	require.NoError(t, err, "Failed to check user RLS bypass status")
+	require.False(t, bypassRLS, "User must not have BYPASSRLS privilege for tenant isolation to work")
+
+	tx.Commit(ctx)
+
 	// Insert document for tenant 1
 	doc1 := &Document{
 		TenantID: testTenantID,
@@ -378,13 +395,21 @@ func TestTenantIsolation(t *testing.T) {
 		Metadata: map[string]interface{}{"tenant": 1},
 	}
 
-	err := db.InsertDocument(ctx, testTenantID, doc1)
+	err = db.InsertDocument(ctx, testTenantID, doc1)
 	require.NoError(t, err)
+
+	// Verify we can retrieve it with the correct tenant ID
+	retrieved, err := db.GetDocument(ctx, testTenantID, doc1.ID)
+	require.NoError(t, err, "Should be able to retrieve document with correct tenant ID")
+	assert.Equal(t, doc1.ID, retrieved.ID)
 
 	// Try to retrieve with different tenant ID (should fail due to RLS)
 	otherTenantID := "22222222-2222-2222-2222-222222222222"
 	_, err = db.GetDocument(ctx, otherTenantID, doc1.ID)
 	assert.Error(t, err, "Should not be able to access document from different tenant")
+	if err != nil {
+		t.Logf("Expected error received: %v", err)
+	}
 
 	// Cleanup
 	err = db.DeleteDocument(ctx, testTenantID, doc1.ID)
