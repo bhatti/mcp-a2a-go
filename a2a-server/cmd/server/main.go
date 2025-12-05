@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/agentcard"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/cost"
+	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/observability"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/protocol"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/server"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/tasks"
@@ -28,6 +30,30 @@ func main() {
 	port := getEnv("PORT", defaultPort)
 
 	log.Println("Initializing A2A Cost-Controlled Research Assistant...")
+
+	// Initialize observability
+	log.Println("Setting up OpenTelemetry...")
+	cfg := loadConfig()
+	telemetry, err := observability.NewTelemetry(ctx, observability.Config{
+		ServiceName:    serverName,
+		ServiceVersion: serverVersion,
+		Environment:    cfg.Environment,
+		OTLPEndpoint:   cfg.OTLPEndpoint,
+		SamplingRate:   cfg.SamplingRate,
+		EnableTracing:  cfg.EnableTracing,
+		EnableMetrics:  cfg.EnableMetrics,
+	})
+	if err != nil {
+		log.Fatalf("Failed to initialize telemetry: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down telemetry: %v", err)
+		}
+	}()
+	log.Println("OpenTelemetry initialized successfully")
 
 	// Initialize stores
 	taskStore := tasks.NewMemoryStore()
@@ -112,8 +138,8 @@ func main() {
 	// Set up demo budgets
 	setupDemoBudgets(ctx, budgetManager)
 
-	// Create server
-	srv := server.NewServer(taskStore, agentStore, costTracker, budgetManager, agentCard)
+	// Create server with telemetry
+	srv := server.NewServer(taskStore, agentStore, costTracker, budgetManager, agentCard, telemetry)
 
 	// Start task processor for background task execution
 	processor := server.NewTaskProcessor(taskStore, 1*time.Second)
@@ -164,10 +190,56 @@ func setupDemoBudgets(ctx context.Context, manager *cost.BudgetManager) {
 	}
 }
 
+// Config holds application configuration
+type Config struct {
+	Port          string
+	Environment   string
+	OTLPEndpoint  string
+	SamplingRate  float64
+	EnableTracing bool
+	EnableMetrics bool
+}
+
+// loadConfig loads configuration from environment variables
+func loadConfig() Config {
+	return Config{
+		Port:          getEnv("PORT", defaultPort),
+		Environment:   getEnv("ENVIRONMENT", "development"),
+		OTLPEndpoint:  getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4318"),
+		SamplingRate:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1.0),
+		EnableTracing: getEnvBool("OTEL_ENABLE_TRACING", true),
+		EnableMetrics: getEnvBool("OTEL_ENABLE_METRICS", true),
+	}
+}
+
 // getEnv retrieves an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return defaultValue
+}
+
+// getEnvFloat retrieves a float environment variable or returns a default value
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		var floatValue float64
+		if _, err := fmt.Sscanf(value, "%f", &floatValue); err == nil {
+			return floatValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvBool retrieves a boolean environment variable or returns a default value
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if value == "true" || value == "1" || value == "yes" {
+			return true
+		}
+		if value == "false" || value == "0" || value == "no" {
+			return false
+		}
 	}
 	return defaultValue
 }

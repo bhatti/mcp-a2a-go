@@ -17,7 +17,9 @@ sseclient-py>=1.8.0
 # OpenTelemetry
 opentelemetry-api>=1.21.0
 opentelemetry-sdk>=1.21.0
-opentelemetry-exporter-jaeger>=1.21.0
+opentelemetry-exporter-otlp-proto-http>=1.21.0
+opentelemetry-instrumentation-requests>=0.42b0
+opentelemetry-instrumentation-httpx>=0.42b0
 
 # JWT handling
 PyJWT[crypto]>=2.8.0

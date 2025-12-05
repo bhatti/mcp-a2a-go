@@ -500,29 +500,76 @@ streamlit run app.py
 
 ## 📊 Observability
 
-### Distributed Tracing (Jaeger)
+This implementation provides **production-grade observability** with dual instrumentation:
+- **OpenTelemetry**: Service-to-service tracing, infrastructure metrics
+- **Langfuse**: LLM-specific observability (prompts, tokens, costs)
 
-- **Instrumentation**: OpenTelemetry SDK in both servers
-- **Trace Propagation**: W3C Trace Context headers
-- **Span Attributes**: Custom attributes for tenant_id, user_id, tool names
-- **Sampling**: 100% in dev, configurable for production
+### Distributed Tracing (OpenTelemetry + Jaeger)
+
+**Full stack instrumentation:**
+- ✅ **Go Servers**: HTTP middleware, tool execution, database queries
+- ✅ **Python Workflows**: LangGraph nodes, MCP calls, LLM invocations
+- ✅ **End-to-End Traces**: Streamlit UI → Python → Go → Database → LLM
+
+**Features:**
+- **Trace Propagation**: W3C Trace Context via HTTP headers
+- **Span Attributes**: tenant_id, user_id (traces only), tool names, query params
+- **Sampling**: Configurable (100% by default for dev)
+- **Auto-instrumentation**: HTTP clients (requests, httpx) in Python
+
+**Example trace:**
+```
+[Streamlit] user.query (1200ms)
+  ├─ [Python] rag_workflow.execute (1150ms)
+  │  ├─ [Python] mcp.hybrid_search (300ms)
+  │  │  └─ [Go MCP] mcp.request → mcp.tool.call → mcp.db.hybrid_search (280ms)
+  │  ├─ [Python] llm.generate (800ms) + [Langfuse] tracks tokens/cost
+  │  └─ [Python] format.response (50ms)
+```
 
 **View Traces**: http://localhost:16686
 
-### Metrics (Prometheus)
+### Metrics (OpenTelemetry + Prometheus)
 
-- **HTTP Metrics**: Request count, duration, status codes
-- **Database Metrics**: Connection pool, query duration
-- **Redis Metrics**: Hit/miss rate, operation latency
-- **Custom Metrics**: Tool execution time, token usage
+**MCP Server Metrics** (`/metrics`):
+- `mcp.request.count`, `mcp.request.duration` - HTTP request metrics
+- `mcp.tool.execution.duration` - Tool execution time by tool name
+- `mcp.db.query.duration` - Database query performance
+- `mcp.search.results` - Search result count distribution
+
+**A2A Server Metrics** (`/metrics`):
+- `a2a.task.count`, `a2a.task.duration` - Task lifecycle metrics
+- `a2a.cost.total`, `a2a.tokens.total` - Cost tracking by model
+- `a2a.budget.remaining` - Budget utilization by tier
+- `a2a.sse.connections` - Active SSE connections
+
+**Configuration:**
+```bash
+# Enable/disable observability
+OTEL_ENABLE_TRACING=true
+OTEL_ENABLE_METRICS=true
+
+# OTLP endpoint (Jaeger)
+OTEL_EXPORTER_OTLP_ENDPOINT=jaeger:4318
+
+# Sampling rate (0.0 to 1.0)
+OTEL_TRACES_SAMPLER_ARG=1.0  # 100% sampling
+
+# Environment
+ENVIRONMENT=development  # or production
+```
 
 **View Metrics**: http://localhost:9090
 
-### Logs
+### LLM Observability (Langfuse)
 
-- **Format**: Structured JSON with trace context
-- **Fields**: timestamp, level, msg, trace_id, span_id, tenant_id
-- **Correlation**: Logs linked to traces via trace_id
+**Complementary to OpenTelemetry:**
+- **Prompt Tracking**: Full prompt/response history
+- **Token Usage**: Per-call token counts and costs
+- **Model Performance**: Latency by model type
+- **Quality Metrics**: User feedback and ratings
+
+**Integration**: Python workflows use both `@observe` (Langfuse) and OTel spans
 
 ## 💡 Configuration
 

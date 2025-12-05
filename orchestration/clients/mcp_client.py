@@ -3,6 +3,14 @@ import requests
 from typing import Dict, Any, Optional, List
 import json
 
+# Optional: OpenTelemetry trace context propagation
+try:
+    from opentelemetry import trace
+    from opentelemetry.propagate import inject
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
 
 class MCPClient:
     """Client for interacting with MCP Server"""
@@ -18,7 +26,7 @@ class MCPClient:
             })
 
     def _make_request(self, method: str, params: Any = None, request_id: str = "1") -> Dict[str, Any]:
-        """Make a JSON-RPC 2.0 request"""
+        """Make a JSON-RPC 2.0 request with trace context propagation"""
         payload = {
             "jsonrpc": "2.0",
             "id": request_id,
@@ -28,10 +36,18 @@ class MCPClient:
         if params is not None:
             payload["params"] = params
 
+        # Prepare headers
+        headers = {'Content-Type': 'application/json'}
+
+        # Inject OpenTelemetry trace context (W3C Trace Context)
+        # This enables end-to-end distributed tracing from Python -> Go
+        if OTEL_AVAILABLE:
+            inject(headers)
+
         response = self.session.post(
             f"{self.base_url}/mcp",
             json=payload,
-            headers={'Content-Type': 'application/json'}
+            headers=headers
         )
         response.raise_for_status()
         return response.json()

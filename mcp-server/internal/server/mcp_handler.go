@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"time"
 
-	// "github.com/bhatti/mcp-a2a-go/mcp-server/internal/observability"
+	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/observability"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/protocol"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/tools"
-	// "go.opentelemetry.io/otel/attribute"
-	// "go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -24,11 +25,11 @@ const (
 // MCPHandler handles MCP JSON-RPC requests
 type MCPHandler struct {
 	toolRegistry *tools.Registry
-	telemetry    interface{} // Disabled temporarily - was *observability.Telemetry
+	telemetry    *observability.Telemetry
 }
 
 // NewMCPHandler creates a new MCP handler
-func NewMCPHandler(toolRegistry *tools.Registry, telemetry interface{}) *MCPHandler {
+func NewMCPHandler(toolRegistry *tools.Registry, telemetry *observability.Telemetry) *MCPHandler {
 	return &MCPHandler{
 		toolRegistry: toolRegistry,
 		telemetry:    telemetry,
@@ -67,21 +68,43 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Start tracing span - DISABLED TEMPORARILY
-	// spanCtx, span := h.telemetry.StartSpan(ctx, "mcp.request",
-	// 	attribute.String("method", req.Method),
-	// 	attribute.String("request_id", fmt.Sprintf("%v", req.ID)),
-	// )
-	// defer span.End()
+	// Start tracing span
+	var span trace.Span
+	if h.telemetry != nil && h.telemetry.Tracer != nil {
+		ctx, span = h.telemetry.Tracer.Start(ctx, "mcp.request",
+			trace.WithAttributes(
+				attribute.String("rpc.method", req.Method),
+				attribute.String("request.id", fmt.Sprintf("%v", req.ID)),
+			),
+		)
+		defer span.End()
+
+		// Record active requests
+		h.telemetry.Metrics.ActiveRequests.Add(ctx, 1)
+		defer h.telemetry.Metrics.ActiveRequests.Add(ctx, -1)
+	}
 
 	// Handle the request
 	response := h.handleRequest(ctx, &req)
 
-	// Record metrics - DISABLED TEMPORARILY
+	// Record metrics and span status
 	duration := time.Since(startTime)
-	_ = duration // Avoid unused variable warning
-	// success := response.Error == nil
-	// h.telemetry.RecordRequest(ctx, req.Method, duration, success)
+	status := "success"
+	if response.Error != nil {
+		status = "error"
+		if span != nil {
+			span.SetStatus(codes.Error, response.Error.Message)
+			span.RecordError(fmt.Errorf("%s: %s", response.Error.Message, response.Error.Data))
+		}
+	} else {
+		if span != nil {
+			span.SetStatus(codes.Ok, "Request handled successfully")
+		}
+	}
+
+	if h.telemetry != nil && h.telemetry.Metrics != nil {
+		h.telemetry.Metrics.RecordRequest(ctx, req.Method, status, float64(duration.Milliseconds()))
+	}
 
 	// Send response
 	h.sendResponse(w, response)
@@ -145,32 +168,54 @@ func (h *MCPHandler) handleToolsCall(ctx context.Context, req *protocol.Request)
 			"Invalid tool call params: "+err.Error(), nil)
 	}
 
-	// Start tool call span - DISABLED TEMPORARILY
-	// spanCtx, span := h.telemetry.StartSpan(ctx, "mcp.tool.call",
-	// 	attribute.String("tool", toolReq.Name),
-	// )
-	// defer span.End()
+	// Start tool call span
+	var span trace.Span
+	if h.telemetry != nil && h.telemetry.Tracer != nil {
+		ctx, span = h.telemetry.Tracer.Start(ctx, "mcp.tool.call",
+			trace.WithAttributes(
+				attribute.String("tool.name", toolReq.Name),
+			),
+		)
+		defer span.End()
+	}
 
 	startTime := time.Now()
-	_ = startTime // Avoid unused variable warning
 
 	// Execute tool
 	result, err := h.toolRegistry.Execute(ctx, toolReq.Name, toolReq.Arguments)
+	duration := time.Since(startTime)
+
 	if err != nil {
-		// Record metrics - DISABLED TEMPORARILY
-		// h.telemetry.RecordToolCall(ctx, toolReq.Name, time.Since(startTime), false)
-		// span.SetStatus(trace.StatusError, err.Error())
+		// Record error metrics
+		if h.telemetry != nil && h.telemetry.Metrics != nil {
+			h.telemetry.Metrics.RecordToolExecution(ctx, toolReq.Name, "error", float64(duration.Milliseconds()))
+			h.telemetry.Metrics.RecordError(ctx, "tool_execution_failed", toolReq.Name)
+		}
+		if span != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
 
 		return protocol.NewErrorResponse(req.ID, protocol.InternalError,
 			fmt.Sprintf("Tool execution failed: %s", err.Error()), nil)
 	}
 
-	// Record metrics - DISABLED TEMPORARILY
-	// h.telemetry.RecordToolCall(ctx, toolReq.Name, time.Since(startTime), !result.IsError)
+	// Record success metrics
+	status := "success"
+	if result.IsError {
+		status = "error"
+		if span != nil {
+			span.SetStatus(codes.Error, "tool returned error")
+		}
+	} else {
+		if span != nil {
+			span.SetStatus(codes.Ok, "Tool executed successfully")
+		}
+	}
 
-	// if result.IsError {
-	// 	span.SetStatus(trace.StatusError, "tool returned error")
-	// }
+	if h.telemetry != nil && h.telemetry.Metrics != nil {
+		h.telemetry.Metrics.RecordToolExecution(ctx, toolReq.Name, status, float64(duration.Milliseconds()))
+	}
 
 	return protocol.NewResponse(req.ID, result)
 }

@@ -10,8 +10,11 @@ import (
 
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/agentcard"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/cost"
+	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/middleware"
+	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/observability"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/protocol"
 	"github.com/bhatti/mcp-a2a-go/a2a-server/internal/tasks"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server is the A2A HTTP server
@@ -21,6 +24,7 @@ type Server struct {
 	costTracker   *cost.Tracker
 	budgetManager *cost.BudgetManager
 	agentCard     *protocol.AgentCard
+	telemetry     *observability.Telemetry
 }
 
 // NewServer creates a new A2A server
@@ -30,6 +34,7 @@ func NewServer(
 	costTracker *cost.Tracker,
 	budgetManager *cost.BudgetManager,
 	agentCard *protocol.AgentCard,
+	telemetry *observability.Telemetry,
 ) *Server {
 	return &Server{
 		taskStore:     taskStore,
@@ -37,12 +42,20 @@ func NewServer(
 		costTracker:   costTracker,
 		budgetManager: budgetManager,
 		agentCard:     agentCard,
+		telemetry:     telemetry,
 	}
 }
 
 // RegisterRoutes registers all HTTP routes
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/health", s.handleHealth)
+
+	// Metrics endpoint for Prometheus (no auth required)
+	if s.telemetry != nil && s.telemetry.Metrics != nil {
+		mux.Handle("/metrics", promhttp.Handler())
+		log.Println("Metrics endpoint registered at /metrics")
+	}
+
 	mux.HandleFunc("/agent", s.handleGetAgentCard)
 	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -89,9 +102,17 @@ func (s *Server) Start(addr string) error {
 		}
 	}
 
+	// Wrap handler with tracing middleware if telemetry is enabled
+	var handler http.Handler = mux
+	if s.telemetry != nil {
+		tracingMiddleware := middleware.NewTracingMiddleware(s.telemetry)
+		handler = tracingMiddleware.Handler(mux)
+		log.Println("Tracing middleware enabled")
+	}
+
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      handler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
