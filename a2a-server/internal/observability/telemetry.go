@@ -63,7 +63,7 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 			semconv.SchemaURL,
 			semconv.ServiceName(cfg.ServiceName),
 			semconv.ServiceVersion(cfg.ServiceVersion),
-			semconv.DeploymentEnvironment(cfg.Environment),
+			semconv.DeploymentEnvironmentName(cfg.Environment),
 		),
 	)
 	if err != nil {
