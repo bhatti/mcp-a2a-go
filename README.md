@@ -571,6 +571,54 @@ ENVIRONMENT=development  # or production
 
 **Integration**: Python workflows use both `@observe` (Langfuse) and OTel spans
 
+### Testing Observability
+
+**Quick automated test:**
+```bash
+./scripts/test-observability.sh
+```
+
+**Manual verification:**
+```bash
+# 1. Check metrics endpoints
+curl http://localhost:8080/metrics  # MCP server
+curl http://localhost:8081/metrics  # A2A server
+
+# 2. Query Prometheus
+curl -G http://localhost:9090/api/v1/query \
+  --data-urlencode 'query=mcp_request_count'
+
+# 3. Make test requests to generate traces
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 4. View traces in Jaeger UI
+open http://localhost:16686
+# Select service: mcp-server, a2a-server, or rag-workflow
+# Click "Find Traces" to see distributed traces
+```
+
+**Common Prometheus queries:**
+```promql
+# Request rate by service
+sum by (service) (rate(mcp_request_count[5m]))
+
+# Error rate
+rate(mcp_request_count{status="error"}[5m])
+
+# Tool execution time (95th percentile)
+histogram_quantile(0.95, rate(mcp_tool_execution_duration_bucket[5m]))
+
+# Total cost by model
+sum by (model) (a2a_cost_total)
+```
+
+**Troubleshooting:**
+- **No metrics?** Check Prometheus targets: http://localhost:9090/targets (all should be "UP")
+- **No traces?** Verify `OTEL_ENABLE_TRACING=true` in docker-compose.yml
+- **Context not propagating?** Check HTTP headers include `traceparent`
+
 ## 💡 Configuration
 
 ### Environment Variables
