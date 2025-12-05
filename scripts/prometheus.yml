@@ -19,19 +19,23 @@ rule_files:
 scrape_configs:
   # MCP Server metrics
   - job_name: 'mcp-server'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['mcp-server:8080']
         labels:
           service: 'mcp-server'
           component: 'backend'
+    scrape_interval: 15s
 
   # A2A Server metrics
   - job_name: 'a2a-server'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8081']
+      - targets: ['a2a-server:8081']
         labels:
           service: 'a2a-server'
           component: 'backend'
+    scrape_interval: 15s
 
   # Prometheus self-monitoring
   - job_name: 'prometheus'

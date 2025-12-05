@@ -7,7 +7,7 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import ChatOllama
 from langchain.schema import HumanMessage, SystemMessage
 
-# Optional: Langfuse for observability
+# Optional: Langfuse for LLM-specific observability
 try:
     from langfuse import Langfuse
     from langfuse.decorators import observe, langfuse_context
@@ -22,6 +22,22 @@ except ImportError:
             return func
         return decorator if not args or not callable(args[0]) else decorator(args[0])
     langfuse_context = None
+
+# OpenTelemetry for service-to-service tracing
+try:
+    from opentelemetry import trace
+    from ..utils.observability import (
+        setup_otel_tracing,
+        add_span_attributes,
+        set_user_attributes,
+        set_llm_attributes,
+        set_search_attributes,
+    )
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    print("⚠️  OpenTelemetry not installed - distributed tracing disabled")
+    trace = None
 
 from ..clients import MCPClient, JWTHelper
 
@@ -108,7 +124,7 @@ class RAGWorkflow:
                 openai_api_key=os.getenv("OPENAI_API_KEY")
             )
 
-        # Initialize LangFuse
+        # Initialize LangFuse (LLM-specific observability)
         self.langfuse = None
         if langfuse_public_key and langfuse_secret_key:
             self.langfuse = Langfuse(
@@ -116,6 +132,19 @@ class RAGWorkflow:
                 secret_key=langfuse_secret_key,
                 host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
             )
+
+        # Initialize OpenTelemetry (distributed tracing)
+        self.tracer = None
+        if OTEL_AVAILABLE and os.getenv("OTEL_ENABLE_TRACING", "true").lower() == "true":
+            try:
+                self.tracer = setup_otel_tracing(
+                    service_name="rag-workflow",
+                    service_version="1.0.0",
+                    environment=os.getenv("ENVIRONMENT", "development"),
+                )
+                print("✅ OpenTelemetry tracing initialized for RAG workflow")
+            except Exception as e:
+                print(f"⚠️  Failed to initialize OpenTelemetry: {e}")
 
         # Build workflow graph
         self.workflow = self._build_workflow()
@@ -140,8 +169,19 @@ class RAGWorkflow:
     @observe(name="search_documents")
     def _search_documents(self, state: RAGState) -> RAGState:
         """Search for relevant documents using MCP hybrid search."""
+        # OpenTelemetry: Create span for this operation
+        if self.tracer:
+            with self.tracer.start_as_current_span("mcp.hybrid_search") as span:
+                set_user_attributes(span, state["user_id"], state["tenant_id"])
+                set_search_attributes(span, state["query"], "hybrid", top_k=5)
+                return self._search_documents_impl(state, span)
+        else:
+            return self._search_documents_impl(state, None)
+
+    def _search_documents_impl(self, state: RAGState, span) -> RAGState:
+        """Implementation of document search."""
         try:
-            # Call MCP hybrid search
+            # Call MCP hybrid search (HTTP request is auto-instrumented)
             result = self.mcp_client.hybrid_search(
                 query=state["query"],
                 limit=5,
@@ -153,7 +193,11 @@ class RAGWorkflow:
                 documents = result["result"].get("documents", [])
                 state["documents"] = documents
 
-                # Log to LangFuse
+                # OpenTelemetry: Record result count
+                if span:
+                    span.set_attribute("search.result_count", len(documents))
+
+                # LangFuse: Log metadata for LLM context
                 if self.langfuse:
                     langfuse_context.update_current_observation(
                         metadata={
@@ -166,10 +210,14 @@ class RAGWorkflow:
             else:
                 state["error"] = result.get("error", {}).get("message", "Unknown error")
                 state["documents"] = []
+                if span:
+                    span.record_exception(Exception(state["error"]))
 
         except Exception as e:
             state["error"] = str(e)
             state["documents"] = []
+            if span:
+                span.record_exception(e)
 
         return state
 

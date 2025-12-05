@@ -14,22 +14,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/auth"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/database"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/middleware"
-	// "github.com/bhatti/mcp-a2a-go/mcp-server/internal/observability"
+	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/observability"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/server"
 	"github.com/bhatti/mcp-a2a-go/mcp-server/internal/tools"
 )
 
 const (
-	defaultPort         = "8080"
-	defaultDBHost       = "localhost"
-	defaultDBPort       = 5432
-	defaultRedisAddr    = "localhost:6379"
-	defaultJaegerURL    = "http://localhost:14268/api/traces"
-	defaultRateLimit    = 100 // requests per minute
+	defaultPort      = "8080"
+	defaultDBHost    = "localhost"
+	defaultDBPort    = 5432
+	defaultRedisAddr = "localhost:6379"
+	defaultRateLimit = 100 // requests per minute
 )
 
 func main() {
@@ -61,25 +61,28 @@ func main() {
 	}
 	log.Println("Redis connected successfully")
 
-	// Initialize observability - DISABLED TEMPORARILY
-	// log.Println("Setting up OpenTelemetry...")
-	// telemetry, err := observability.NewTelemetry(ctx, observability.Config{
-	// 	ServiceName:    "mcp-server",
-	// 	ServiceVersion: "1.0.0",
-	// 	JaegerEndpoint: cfg.JaegerURL,
-	// 	Environment:    "development",
-	// })
-	// if err != nil {
-	// 	log.Fatalf("Failed to initialize telemetry: %v", err)
-	// }
-	// defer func() {
-	// 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// 	defer cancel()
-	// 	if err := telemetry.Shutdown(shutdownCtx); err != nil {
-	// 		log.Printf("Error shutting down telemetry: %v", err)
-	// 	}
-	// }()
-	// log.Println("OpenTelemetry initialized successfully")
+	// Initialize observability
+	log.Println("Setting up OpenTelemetry...")
+	telemetry, err := observability.NewTelemetry(ctx, observability.Config{
+		ServiceName:    "mcp-server",
+		ServiceVersion: "1.0.0",
+		Environment:    cfg.Environment,
+		OTLPEndpoint:   cfg.OTLPEndpoint,
+		SamplingRate:   cfg.SamplingRate,
+		EnableTracing:  cfg.EnableTracing,
+		EnableMetrics:  cfg.EnableMetrics,
+	})
+	if err != nil {
+		log.Fatalf("Failed to initialize telemetry: %v", err)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := telemetry.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Error shutting down telemetry: %v", err)
+		}
+	}()
+	log.Println("OpenTelemetry initialized successfully")
 
 	// Initialize JWT validator
 	log.Println("Setting up authentication...")
@@ -99,12 +102,13 @@ func main() {
 	toolRegistry.Register(tools.NewHybridSearchTool(db))
 	log.Printf("Registered %d tools", len(toolRegistry.List()))
 
-	// Create MCP handler (telemetry disabled temporarily)
-	mcpHandler := server.NewMCPHandler(toolRegistry, nil)
+	// Create MCP handler with telemetry
+	mcpHandler := server.NewMCPHandler(toolRegistry, telemetry)
 
 	// Setup middleware
 	authMiddleware := middleware.NewAuthMiddleware(jwtValidator)
 	rateLimiter := middleware.NewRateLimiter(redisClient, cfg.RateLimit)
+	tracingMiddleware := middleware.NewTracingMiddleware(telemetry)
 
 	// Create HTTP server with middleware stack
 	mux := http.NewServeMux()
@@ -116,16 +120,17 @@ func main() {
 	})
 
 	// Metrics endpoint for Prometheus (no auth required)
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		// Prometheus metrics are auto-exposed by the exporter
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("See Prometheus exporter"))
-	})
+	if cfg.EnableMetrics {
+		mux.Handle("/metrics", promhttp.Handler())
+		log.Printf("Metrics endpoint: http://localhost:%s/metrics", cfg.Port)
+	}
 
-	// MCP endpoint with full middleware stack
+	// MCP endpoint with full middleware stack (tracing -> auth -> rate limiting -> handler)
 	mux.Handle("/mcp",
-		authMiddleware.OptionalHandler(
-			rateLimiter.Handler(mcpHandler),
+		tracingMiddleware.Handler(
+			authMiddleware.OptionalHandler(
+				rateLimiter.Handler(mcpHandler),
+			),
 		),
 	)
 
@@ -168,11 +173,15 @@ func main() {
 
 // Config holds application configuration
 type Config struct {
-	Port      string
-	Database  database.Config
-	RedisAddr string
-	JaegerURL string
-	RateLimit int
+	Port          string
+	Database      database.Config
+	RedisAddr     string
+	RateLimit     int
+	Environment   string
+	OTLPEndpoint  string
+	SamplingRate  float64
+	EnableTracing bool
+	EnableMetrics bool
 }
 
 // loadConfig loads configuration from environment variables
@@ -189,9 +198,13 @@ func loadConfig() Config {
 			MaxConns: int32(getEnvInt("DB_MAX_CONNS", 25)),
 			MinConns: int32(getEnvInt("DB_MIN_CONNS", 5)),
 		},
-		RedisAddr: getEnv("REDIS_ADDR", defaultRedisAddr),
-		JaegerURL: getEnv("JAEGER_URL", defaultJaegerURL),
-		RateLimit: getEnvInt("RATE_LIMIT", defaultRateLimit),
+		RedisAddr:     getEnv("REDIS_ADDR", defaultRedisAddr),
+		RateLimit:     getEnvInt("RATE_LIMIT", defaultRateLimit),
+		Environment:   getEnv("ENVIRONMENT", "development"),
+		OTLPEndpoint:  getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4318"),
+		SamplingRate:  getEnvFloat("OTEL_TRACES_SAMPLER_ARG", 1.0),
+		EnableTracing: getEnvBool("OTEL_ENABLE_TRACING", true),
+		EnableMetrics: getEnvBool("OTEL_ENABLE_METRICS", true),
 	}
 }
 
@@ -285,6 +298,30 @@ func getEnvInt(key string, defaultValue int) int {
 		var intValue int
 		if _, err := fmt.Sscanf(value, "%d", &intValue); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvFloat retrieves a float environment variable or returns a default value
+func getEnvFloat(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		var floatValue float64
+		if _, err := fmt.Sscanf(value, "%f", &floatValue); err == nil {
+			return floatValue
+		}
+	}
+	return defaultValue
+}
+
+// getEnvBool retrieves a boolean environment variable or returns a default value
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if value == "true" || value == "1" || value == "yes" {
+			return true
+		}
+		if value == "false" || value == "0" || value == "no" {
+			return false
 		}
 	}
 	return defaultValue
